@@ -11,6 +11,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from transformers import DateTimeTransformer, AirportLatLongTransformer
 
+df = pd.read_csv('data/2019_prepared.csv')
 
 def save_model(model):
     with open('models/rfc.pkl', 'wb') as f:
@@ -24,8 +25,6 @@ def load_model():
 
 
 def create_model():
-    df = pd.read_csv('data/2019_prepared.csv')
-
     y = df['DELAY_CATEGORY']
     X = df.drop(columns='DELAY_CATEGORY')
 
@@ -62,13 +61,39 @@ def create_model():
 
 
 if os.path.exists('models/rfc.pkl'):
-    print('Loading predictive model...')
+    print('\nLoading predictive model...')
     model = load_model()
 else:
-    print('No saved model found. Creating predictive model...')
+    print('\nNo saved model found. Creating new predictive model...')
     model = create_model()
 
-print('Predictive model loaded.\n')
+print('Predictive model loaded.')
+
+airlines_df = pd.read_csv('data/airlines_data.csv')
+
+airports_df = pd.read_csv('data/airports.csv')
+airports_df['Code'] = airports_df['iata']
+airports_df['Airport Name'] = airports_df['airport']
+airports_df = airports_df[['Code', 'Airport Name']]
+
+valid_airports = pd.concat([df['ORIGIN'], df['DEST']]).unique()
+airports_df = airports_df[airports_df['Code'].isin(valid_airports)]
+
+
+def airport_search():
+    search_term = input("\nEnter part of the airport or city name or type 'cancel': ").strip()
+    if search_term.lower() == 'cancel':
+        return
+    result = airports_df[airports_df['Airport Name'].str.contains(search_term, case=False, na=False)]
+
+    if not result.empty:
+        print(f"\n{result}\n")
+    else:
+        response = input(f"\nCould not find an airport matching that search term. Try again (Y/n)? ")
+        if response.lower() == 'n':
+            return
+        else:
+            return airport_search()
 
 
 def start_repl():
@@ -84,7 +109,7 @@ def start_repl():
 
     def prompt_user():
         if user_input['FL_DATE'] is None:
-            fl_date = input("Enter the flight date using format YYYY-MM-DD: ")
+            fl_date = input("\nEnter the flight date using format YYYY-MM-DD: ")
             try:
                 datetime.strptime(fl_date, '%Y-%m-%d')
                 user_input['FL_DATE'] = fl_date
@@ -100,20 +125,28 @@ def start_repl():
                 print("Incorrect time format.")
         elif user_input['OP_UNIQUE_CARRIER'] is None:
             carrier = input(
-                "Enter the 2-letter airline identifier (i.e. DL for Delta Airlines, UA for United Airlines): ")
-            if len(carrier) != 2:
+                "Enter the 2-letter airline identifier (i.e. DL for Delta Airlines, UA for United Airlines) or enter 'list' for a list of airlines: ").upper()
+            if carrier == 'LIST':
+                print(f"\n{airlines_df}\n")
+            elif len(carrier) != 2:
                 print("Incorrect 2-letter airline identifier.")
             else:
                 user_input['OP_UNIQUE_CARRIER'] = carrier
         elif user_input['ORIGIN'] is None:
-            origin = input("Enter the origin 3-letter airport code (i.e. ATL for Atlanta, LAX for Los Angeles): ")
-            if len(origin) != 3:
+            origin = input(
+                "Enter the origin 3-letter airport code (i.e. ATL for Atlanta, LAX for Los Angeles) or enter 'search' to search by airport name: ").strip().upper()
+            if origin == 'SEARCH':
+                airport_search()
+            elif origin not in airports_df['Code'].values:
                 print("Incorrect 3-letter airport code.")
             else:
                 user_input['ORIGIN'] = origin
         elif user_input['DEST'] is None:
-            dest = input("Enter the destination 3-letter airport code (i.e. ATL for Atlanta, LAX for Los Angeles): ")
-            if len(dest) != 3:
+            dest = input(
+                "Enter the destination 3-letter airport code (i.e. ATL for Atlanta, LAX for Los Angeles). Enter 'search' to search by airport name: ").strip().upper()
+            if dest == 'SEARCH':
+                airport_search()
+            elif dest not in airports_df['Code'].values:
                 print("Incorrect 3-letter airport code.")
             else:
                 user_input['DEST'] = dest
@@ -132,10 +165,10 @@ def start_repl():
     chance_on_time = proba_map['NO_DELAY'] * 100
     chance_delayed = 100 - chance_on_time
 
-    print(f"On-time arrival probability: {chance_on_time:.2f}%")
+    print(f"\nOn-time arrival probability: {chance_on_time:.2f}%")
     print(f"Delayed arrival probability: {chance_delayed:.2f}%")
 
-    print(f"Chance of minor delay (15min-45min): {proba_map['MINOR_DELAY'] * 100:.2f}%")
+    print(f"\nChance of minor delay (15min-45min): {proba_map['MINOR_DELAY'] * 100:.2f}%")
     print(f"Chance of major delay (45min-2hrs):  {proba_map['MAJOR_DELAY'] * 100:.2f}%")
     print(f"Chance of severe delay (>2hrs):  {proba_map['SEVERE_DELAY'] * 100:.2f}%")
 
