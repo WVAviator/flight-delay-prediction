@@ -1,15 +1,28 @@
+import os.path
+import joblib
+from datetime import datetime
+
 import pandas as pd
-import numpy as np
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.metrics import brier_score_loss, log_loss
 from transformers import DateTimeTransformer, AirportLatLongTransformer
 
+
 def save_model(model):
+    with open('models/rfc.pkl', 'wb') as f:
+        joblib.dump(model, f)
+
+
+def load_model():
+    with open('models/rfc.pkl', 'rb') as f:
+        model = joblib.load(f)
+    return model
+
+
 def create_model():
     df = pd.read_csv('data/2019_prepared.csv')
 
@@ -44,25 +57,92 @@ def create_model():
 
     clf.fit(X_train, y_train)
 
-    gauge_performance(clf, X_test, y_test)
+    save_model(clf)
     return clf
 
 
-def gauge_performance(clf, X_test, y_test):
-    y_pred_proba = clf.predict_proba(X_test)
+if os.path.exists('models/rfc.pkl'):
+    print('Loading predictive model...')
+    model = load_model()
+else:
+    print('No saved model found. Creating predictive model...')
+    model = create_model()
 
-    classes = clf.named_steps['classifier'].classes_
-    brier_scores = []
+print('Predictive model loaded.\n')
 
-    for i, class_label in enumerate(classes):
-        brier_score = brier_score_loss(y_test == class_label, y_pred_proba[:, i])
-        brier_scores.append(brier_score)
-        print(f'Brier score for class {class_label}: {brier_score}')
 
-    average_brier_score = np.mean(brier_scores)
-    print(f'Average Brier score: {average_brier_score}')
+def start_repl():
+    user_input = {
+        'FL_DATE': None,
+        'OP_UNIQUE_CARRIER': None,
+        'ORIGIN': None,
+        'DEST': None,
+        'DEP_TIME': None
+    }
 
-    print("\nLog loss (smaller is better):")
-    print(log_loss(y_test, y_pred_proba))
+    user_input_complete = [False]
 
-create_model()
+    def prompt_user():
+        if user_input['FL_DATE'] is None:
+            fl_date = input("Enter the flight date using format YYYY-MM-DD: ")
+            try:
+                datetime.strptime(fl_date, '%Y-%m-%d')
+                user_input['FL_DATE'] = fl_date
+            except ValueError:
+                print("Incorrect date format.")
+        elif user_input['DEP_TIME'] is None:
+            dep_time = input("Enter the (local) departure time using format HH:MM (24-hour clock): ")
+            try:
+                datetime.strptime(dep_time, '%H:%M')
+                hours, minutes = dep_time.split(':')
+                user_input['DEP_TIME'] = float(hours) * 100 + float(minutes)
+            except ValueError:
+                print("Incorrect time format.")
+        elif user_input['OP_UNIQUE_CARRIER'] is None:
+            carrier = input(
+                "Enter the 2-letter airline identifier (i.e. DL for Delta Airlines, UA for United Airlines): ")
+            if len(carrier) != 2:
+                print("Incorrect 2-letter airline identifier.")
+            else:
+                user_input['OP_UNIQUE_CARRIER'] = carrier
+        elif user_input['ORIGIN'] is None:
+            origin = input("Enter the origin 3-letter airport code (i.e. ATL for Atlanta, LAX for Los Angeles): ")
+            if len(origin) != 3:
+                print("Incorrect 3-letter airport code.")
+            else:
+                user_input['ORIGIN'] = origin
+        elif user_input['DEST'] is None:
+            dest = input("Enter the destination 3-letter airport code (i.e. ATL for Atlanta, LAX for Los Angeles): ")
+            if len(dest) != 3:
+                print("Incorrect 3-letter airport code.")
+            else:
+                user_input['DEST'] = dest
+        else:
+            user_input_complete[0] = True
+
+    while not user_input_complete[0]:
+        prompt_user()
+
+    user_df = pd.DataFrame([user_input])
+
+    user_pred_proba = model.predict_proba(user_df)
+    class_labels = model.named_steps['classifier'].classes_
+    proba_map = {class_label: proba for class_label, proba in zip(class_labels, user_pred_proba[0])}
+
+    chance_on_time = proba_map['NO_DELAY'] * 100
+    chance_delayed = 100 - chance_on_time
+
+    print(f"On-time arrival probability: {chance_on_time:.2f}%")
+    print(f"Delayed arrival probability: {chance_delayed:.2f}%")
+
+    print(f"Chance of minor delay (15min-45min): {proba_map['MINOR_DELAY'] * 100:.2f}%")
+    print(f"Chance of major delay (45min-2hrs):  {proba_map['MAJOR_DELAY'] * 100:.2f}%")
+    print(f"Chance of severe delay (>2hrs):  {proba_map['SEVERE_DELAY'] * 100:.2f}%")
+
+    again = input("\nCheck another flight (y/N)? ")
+
+    if again.lower() == 'y':
+        start_repl()
+
+
+start_repl()
