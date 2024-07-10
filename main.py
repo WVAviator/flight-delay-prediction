@@ -12,15 +12,14 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from transformers import DateTimeTransformer, AirportLatLongTransformer
 
 df = pd.read_csv('data/2019_prepared.csv')
+model_path = os.path.join('models', 'rfc.pkl')
 
 def save_model(model):
-    with open('models/rfc.pkl', 'wb') as f:
-        joblib.dump(model, f)
+    joblib.dump(model, model_path)
 
 
 def load_model():
-    with open('models/rfc.pkl', 'rb') as f:
-        model = joblib.load(f)
+    model = joblib.load(model_path)
     return model
 
 

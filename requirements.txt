@@ -6,3 +6,5 @@ scipy
 joblib
 datetime
 matplotlib
+ipywidgets
+IPython
